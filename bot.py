@@ -2,11 +2,11 @@ import os
 import logging
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ChatJoinRequestHandler
+)
 import sqlite3
 from datetime import datetime, timedelta
-import requests
-import json
 import time
 from tinkoff.invest import Client
 from tinkoff.invest.utils import now
@@ -27,16 +27,19 @@ PRIVATE_CHANNEL = os.getenv('PRIVATE_CHANNEL')
 # Настройки Тинькофф API
 TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')  # Получите в личном кабинете Тинькофф
 TINKOFF_ACCOUNT = os.getenv('TINKOFF_ACCOUNT')  # Номер вашего счета
-SUBSCRIPTION_PRICE = os.getenv('SUBSCRIPTION_PRICE') # Цена в рублях
+SUBSCRIPTION_PRICE = int(os.getenv('SUBSCRIPTION_PRICE', '2000'))  # Цена в рублях
+
 
 def get_main_keyboard():
     """Создает основную клавиатуру"""
     keyboard = [
         [KeyboardButton("💳 Оплата")],
         [KeyboardButton("📞 Контакты")],
-        [KeyboardButton("🎥 Видео")]
+        [KeyboardButton("🎥 Видео")],
+        [KeyboardButton("ℹ️ Информация о тренере")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 
 def init_db():
     conn = sqlite3.connect('users.db')
@@ -50,6 +53,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def is_user_paid(user_id):
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -58,22 +62,22 @@ def is_user_paid(user_id):
     conn.close()
     return result[0] if result else False
 
+
 def generate_payment_id():
     """Генерирует уникальный идентификатор платежа"""
     return f"PAY_{int(time.time())}_{os.urandom(4).hex()}"
+
 
 def check_payment(payment_id):
     """Проверяет статус платежа через API Тинькофф"""
     try:
         with Client(TINKOFF_TOKEN) as client:
-            # Получаем операции по счету
             operations = client.operations.get_operations(
                 account_id=TINKOFF_ACCOUNT,
                 from_=now() - timedelta(days=1),
                 to=now()
             )
 
-            # Ищем операцию с нужным комментарием
             for operation in operations.operations:
                 if operation.description == payment_id and operation.payment >= SUBSCRIPTION_PRICE:
                     return True
@@ -82,6 +86,7 @@ def check_payment(payment_id):
     except Exception as e:
         logger.error(f"Error checking payment: {e}")
         return False
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -97,18 +102,50 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open('hello.mp4', 'rb') as video:
         await update.message.reply_video(
             video=video,
-            caption="☝️Что тебя ждем на канале? В этом коротком видео вся информация",
+            caption="☝️Что тебя ждет на канале? В этом коротком видео вся информация \n Стоимость подписки: 2000 рублей за 3 месяца",
             reply_markup=get_main_keyboard()
         )
 
-async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def handle_payment_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("💳 Оплатить 2000 руб", callback_data="init_payment")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="go_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.message:
+        await update.message.reply_text(
+            "🥋 *Курс борьбы*\n\n"
+            "🔥 Доступ к эксклюзивным видео, техникам и тренировкам\n"
+            "💰 Стоимость подписки: *2000 руб* за 3 месяца\n\n"
+            "Нажмите кнопку ниже, чтобы перейти к оплате",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+
+
+async def init_payment_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик кнопки оплаты"""
     user_id = update.effective_user.id
-    payment_id = generate_payment_id()
-    
-    # Сохраняем payment_id в базе данных
+
+    # Проверяем, есть ли уже оплата
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
+    c.execute("SELECT is_paid FROM users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+
+    if row and row[0]:  # если is_paid = 1
+        await update.callback_query.answer()  # закрываем лоадер у кнопки
+        await update.callback_query.message.reply_text(
+            "✅ Подписка на текущий период уже оплачена.",
+            reply_markup=get_main_keyboard()
+        )
+        conn.close()
+        return
+
+    # Если не оплачено — продолжаем процесс оплаты
+    payment_id = generate_payment_id()
     c.execute("UPDATE users SET payment_id = ? WHERE user_id = ?", (payment_id, user_id))
     conn.commit()
     conn.close()
@@ -123,25 +160,32 @@ async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚠️ Важно: обязательно укажите комментарий к платежу!
 После оплаты нажмите кнопку "Проверить оплату"
     """
-    
+
     keyboard = [[InlineKeyboardButton("Проверить оплату", callback_data=f"check_{payment_id}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
+
+    await update.callback_query.answer()
+    await update.callback_query.message.reply_text(
         payment_message,
         reply_markup=reply_markup
     )
+
+
+async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("Вы вернулись в главное меню", reply_markup=get_main_keyboard())
+
 
 async def handle_payment_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик проверки оплаты"""
     query = update.callback_query
     await query.answer()
     
-    payment_id = query.data.split("_")[1]
+    payment_id = query.data.split("_", 1)[1]
     user_id = update.effective_user.id
     
     if check_payment(payment_id):
-        # Обновляем статус оплаты
         conn = sqlite3.connect('users.db')
         c = conn.cursor()
         c.execute("UPDATE users SET is_paid = ?, payment_date = ? WHERE user_id = ?",
@@ -149,27 +193,10 @@ async def handle_payment_check(update: Update, context: ContextTypes.DEFAULT_TYP
         conn.commit()
         conn.close()
 
-        # Создаем приглашение в канал
-        try:
-            invite_link = await context.bot.create_chat_invite_link(
-                chat_id=PRIVATE_CHANNEL,
-                member_limit=1,
-                expire_date=int((datetime.now() + timedelta(days=1)).timestamp())
-            )
-            await query.message.reply_text(
-                f"✅ Оплата подтверждена!\n\n"
-                f"🎥 Вот ваша ссылка для вступления в закрытый канал:\n"
-                f"{invite_link.invite_link}\n\n"
-                f"⚠️ Ссылка действительна 24 часа",
-                reply_markup=get_main_keyboard()
-            )
-        except Exception as e:
-            logger.error(f"Error creating invite link: {e}")
-            await query.message.reply_text(
-                "✅ Оплата подтверждена!\n"
-                "Свяжитесь с администратором для получения доступа к каналу.",
-                reply_markup=get_main_keyboard()
-            )
+        await query.message.reply_text(
+            "✅ Оплата подтверждена! Теперь вы можете отправить заявку на вступление в группу.",
+            reply_markup=get_main_keyboard()
+        )
     else:
         await query.message.reply_text(
             "❌ Оплата не найдена. Пожалуйста, проверьте:\n"
@@ -179,11 +206,20 @@ async def handle_payment_check(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=get_main_keyboard()
         )
 
+
 async def handle_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📞 Свяжитесь с администратором: {ADMIN_USERNAME}",
         reply_markup=get_main_keyboard()
     )
+
+
+async def handle_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Максим Александрович, четырех кратный победитель кубка галактики, трехкратный призер дворовых игр без правил",
+        reply_markup=get_main_keyboard()
+    )
+
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -199,27 +235,71 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_main_keyboard()
         )
 
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     if text == "💳 Оплата":
-        await handle_payment(update, context)
+        await handle_payment_info(update, context)
     elif text == "📞 Контакты":
         await handle_contacts(update, context)
     elif text == "🎥 Видео":
         await handle_video(update, context)
+    elif text == "ℹ️ Информация о тренере":
+        await handle_info(update, context)
+
+
+# Новый обработчик заявок на вступление в группу
+async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.chat_join_request.from_user
+    user_id = user.id
+    username = user.username
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT is_paid FROM users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if row and row[0]:  # Если пользователь оплатил
+        try:
+            await context.bot.approve_chat_join_request(
+                chat_id=update.chat_join_request.chat.id,
+                user_id=user_id
+            )
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="✅ Ваша заявка принята, добро пожаловать в группу!"
+            )
+            logger.info(f"Пользователь @{username} ({user_id}) принят в группу автоматически.")
+        except Exception as e:
+            logger.error(f"Ошибка при принятии заявки: {e}")
+    else:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="⚠️ Вы ещё не оплатили подписку. Пожалуйста, оплатите, чтобы получить доступ."
+        )
+
 
 def main():
     init_db()
     
     application = Application.builder().token(TOKEN).build()
 
-    # Добавляем обработчики
+    # Команды и сообщения
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Обработка callback кнопок
     application.add_handler(CallbackQueryHandler(handle_payment_check, pattern="^check_"))
+    application.add_handler(CallbackQueryHandler(init_payment_process, pattern="^init_payment$"))
+    application.add_handler(CallbackQueryHandler(handle_back, pattern="^go_back$"))
+
+    # Обработчик заявок на вступление в группу
+    application.add_handler(ChatJoinRequestHandler(handle_join_request))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+
 if __name__ == '__main__':
-    main() 
+    main()
