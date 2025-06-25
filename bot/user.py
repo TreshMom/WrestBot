@@ -86,7 +86,7 @@ async def handle_payment_info(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if update.message:
         await update.message.reply_text(
-            "🥋 *Курс борьбы*\n\n"
+            "🥋 *Курс вольной борьбы*\n\n"
             "🔥 Доступ к эксклюзивным видео, техникам и тренировкам\n"
             f"💰 Стоимость подписки: *{price} руб* за {period} месяца\n\n"
             "Нажмите кнопку ниже, чтобы перейти к оплате",
@@ -189,7 +189,7 @@ async def check_and_remove_expired_subscriptions(context):
                 await context.bot.ban_chat_member(group_id, user_id)
                 await context.bot.unban_chat_member(group_id, user_id)
             except Exception as e:
-                print(f"Ошибка удаления пользователя {user_id}: {e}")
+                logger.error(f"Ошибка удаления пользователя {user_id}: {e}")
             # Обновить пользователя в базе
             c.execute(
                 "UPDATE users SET is_paid = 0, payment_date = NULL, data_end = NULL WHERE user_id = ?",

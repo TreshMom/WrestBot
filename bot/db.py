@@ -98,40 +98,6 @@ def get_setting(key: str):
     return row[0] if row else None
 
 
-def load_env():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "SELECT price, period, admin_usernames, description_coach, support_concat, bank_token, bot_token, link_chanal FROM settings LIMIT 1"
-    )
-    row = c.fetchone()  # Получаем одну строку
-    conn.close()  # Закрываем соединение
-
-    if row:
-        (
-            price,
-            period,
-            admin_usernames,
-            description_coach,
-            support_concat,
-            bank_token,
-            bot_token,
-            link_chanal,
-        ) = row
-        return (
-            price,
-            period,
-            admin_usernames,
-            description_coach,
-            support_concat,
-            bank_token,
-            bot_token,
-            link_chanal,
-        )
-    else:
-        return None
-
-
 def is_user_paid(user_id: int) -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -139,44 +105,6 @@ def is_user_paid(user_id: int) -> bool:
     row = c.fetchone()
     conn.close()
     return bool(row[0]) if row else False
-
-
-def add_user(user_id, username):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "INSERT OR IGNORE INTO users (user_id, username, is_paid) VALUES (?, ?, ?)",
-        (user_id, username, False),
-    )
-    conn.commit()
-    conn.close()
-
-
-def add_video(title: str, file_path: str, description: str):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(
-        "INSERT INTO videos (title, file_path, description) VALUES (?, ?, ?)",
-        (title, file_path, description),
-    )
-    conn.commit()
-    conn.close()
-
-
-def get_all_videos():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, title, file_path, description FROM videos")
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
-
-def get_topics_from_settings():
-    topics_str = get_setting("topic_name")
-    if not topics_str:
-        return []
-    return [t.strip() for t in topics_str.split(",") if t.strip()]
 
 
 # init_db()
