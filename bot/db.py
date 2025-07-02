@@ -26,24 +26,8 @@ def init_db():
                 bot_token TEXT,
                 link_chanal TEXT,
                 chat_id INTEGER,
-                topic_name TEXT)""")
-
-    # Таблица для хранения видео
-    c.execute("""
-                CREATE TABLE IF NOT EXISTS videos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name_topic TEXT, 
-                title TEXT,
-                file_path TEXT,
-                description TEXT)""")
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS topics (
-            thread_id INTEGER PRIMARY KEY,
-            topic_name TEXT UNIQUE
-        )
-    """)
-
+                text_payment TEXT)""")
+    
     conn.commit()
     conn.close()
 
@@ -55,19 +39,19 @@ def init_settings_with_defaults():
     if c.fetchone()[0] == 0:
         c.execute(
             """
-            INSERT INTO settings (price, period, admin_usernames, description_coach, support_concat, bank_token, bot_token, link_chanal, chat_id, topic_name)
+            INSERT INTO settings (price, period, admin_usernames, description_coach, support_concat, bank_token, bot_token, link_chanal, chat_id, text_payment)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 2000,
                 3,
                 "424576017, 00000000",
                 "Максим Александрович, четырех кратный победитель кубка галактики, трехкратный призер дворовых игр без правил и просто капитальный красавчик",
-                "Связь по вопросам: @am_vasilev",
+                "@am_vasilev",
                 "None",
-                "7529079621:AAEpT2cVdiDmQHFmTT_11QVY4IOQrlVlRT8",
-                "https://t.me/+_8ozeq-tQnlhODJi",
-                -1002624676766,
-                "Обоюдный захват, Партер, Захват голова с рукой, Посадки с высокого партера, Работа на руках, Работа на проходах, Физическая подготовка, Скоростно-силовая подготовка",
+                "None",
+                "None",
+                None,
+                "🥋 Курс вольной борьбы\n\n 🔥 Доступ к эксклюзивным видео, техникам и тренировкам\n",
             ),
         )
     conn.commit()
@@ -107,5 +91,5 @@ def is_user_paid(user_id: int) -> bool:
     return bool(row[0]) if row else False
 
 
-# init_db()
-# init_settings_with_defaults()
+#init_db()
+#init_settings_with_defaults()

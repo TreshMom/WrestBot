@@ -4,11 +4,14 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    LabeledPrice,
+    PreCheckoutQuery
 )
 from telegram.ext import ContextTypes
 import sqlite3
 import db
 
+from dateutil.relativedelta import relativedelta
 from datetime import datetime
 import logging
 
@@ -35,7 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open("hello.mp4", "rb") as video:
         await update.message.reply_video(
             video=video,
-            caption="☝️Что тебя ждет на канале? В этом коротком видео вся информация \n",
+            caption="☝️Что тебя ждет на канале?\n В этом коротком видео вся информация \n",
             reply_markup=get_main_keyboard_user(),
         )
 
@@ -66,14 +69,17 @@ async def handle_message_user(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_payment_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    """
     if db.is_user_paid(user_id):
         await update.message.reply_text(
             "Вы уже оплатили подписку на ближайший период.",
             reply_markup=get_main_keyboard_user(),
         )
         return
+    """
     price = db.get_setting("price")
     period = db.get_setting("period")
+    text = db.get_setting("text_payment")
     keyboard = [
         [
             InlineKeyboardButton(
@@ -86,9 +92,9 @@ async def handle_payment_info(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if update.message:
         await update.message.reply_text(
-            "🥋 *Курс вольной борьбы*\n\n"
-            "🔥 Доступ к эксклюзивным видео, техникам и тренировкам\n"
-            f"💰 Стоимость подписки: *{price} руб* за {period} месяца\n\n"
+            text
+            + "\n" +
+            f"Стоимость подписки: *{price} руб* за {period} месяца\n\n"
             "Нажмите кнопку ниже, чтобы перейти к оплате",
             parse_mode="Markdown",
             reply_markup=reply_markup,
@@ -97,8 +103,73 @@ async def handle_payment_info(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def init_payment_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик кнопки оплаты"""
-    pass
+    query = update.callback_query
+    await query.answer()
 
+    user_id = query.from_user.id
+    provide_token = db.get_setting("bank_token") 
+    price = int(db.get_setting("price")) * 100  # Telegram требует цену в копейках
+    period = int(db.get_setting("period"))
+
+    await context.bot.send_invoice(
+        chat_id=user_id,
+        title="Подписка на курс",
+        description=f"Доступ к каналу на {period} мес.",
+        payload="payment-subscription",  # Используй для идентификации
+        provider_token=provide_token,
+        currency="RUB",
+        prices=[LabeledPrice(label="Подписка", amount=price)],
+        start_parameter="subscription-start",
+        need_name=False,
+        need_email=False,
+        need_phone_number=False,
+    )
+
+async def handle_precheckout_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query: PreCheckoutQuery = update.pre_checkout_query
+    if query.invoice_payload != "payment-subscription":
+        await query.answer(ok=False, error_message="Что-то пошло не так при проверке платежа.")
+    else:
+        await query.answer(ok=True)
+
+async def handle_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    now = datetime.now()
+    data_end_str = db.get_setting("data_end")
+    try:
+        current_end = datetime.strptime(data_end_str, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        current_end = None
+    else:
+        now = datetime.now()
+
+    if current_end and current_end > now:
+        start_from = current_end
+    else:
+        start_from = now
+
+    period = int(db.get_setting("period"))
+    new_end = start_from + relativedelta(months=period)
+    
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("""
+        UPDATE users SET 
+            is_paid = 1,
+            payment_date = ?,
+            data_end = ?
+        WHERE user_id = ?
+    """, (now.strftime("%Y-%m-%d %H:%M:%S"), new_end.strftime("%Y-%m-%d %H:%M:%S"), user_id))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(
+        f"✅ Оплата прошла успешно!\n"
+        f"Ваша подписка активна до *{new_end.strftime('%d.%m.%Y')}*"
+        f"Нажмите на вкладку '🎥Видео'.",
+        parse_mode="Markdown",
+        reply_markup=get_main_keyboard_user(),
+    )
 
 async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -107,16 +178,10 @@ async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Вы вернулись в главное меню", reply_markup=get_main_keyboard_user()
     )
 
-
-async def handle_payment_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик проверки оплаты"""
-    """Нужно в users записать дату до какого подписка дейсвительна """
-    pass
-
-
 async def handle_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contacts = db.get_setting("support_concat") or "Контакты не указаны"
-    await update.message.reply_text(contacts, reply_markup=get_main_keyboard_user())
+    temp ="Связь по вопросам: "
+    await update.message.reply_text(temp + contacts, reply_markup=get_main_keyboard_user())
 
 
 async def handle_info(update: Update, context: ContextTypes.DEFAULT_TYPE):

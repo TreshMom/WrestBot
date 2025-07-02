@@ -19,12 +19,12 @@ def get_main_keyboard_admin():
     keyboard = [
         # [KeyboardButton("🎥 Добавить видео")],
         [KeyboardButton("💳 Изменить цену на подписку")],
-        [KeyboardButton("📞 Изменить период подписки")],
-        [KeyboardButton("🎥 Изменить контакты")],
+        [KeyboardButton("📅 Изменить период подписки")],
         [KeyboardButton("ℹ️ Изменить информацию о тренере")],
+        [KeyboardButton("📞 Изменить контакт в контактах")],
+        [KeyboardButton("💰 Изменить текст на оплате")],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_ids = (db.get_setting("admin_usernames") or "").split(",")
@@ -75,17 +75,19 @@ async def handle_message_admin(update: Update, context: ContextTypes.DEFAULT_TYP
         await user.handle_info(update, context)
     elif text == "💳 Изменить цену на подписку":
         await handle_change_price(update, context)
-    elif text == "📞 Изменить период подписки":
+    elif text == "📅 Изменить период подписки":
         await handle_change_period(update, context)
     elif text == "ℹ️ Изменить информацию о тренере":
         await handle_change_info(update, context)
-    elif text == "🎥 Изменить контакты":
+    elif text == "📞 Изменить контакт в контактах":
         await handle_change_contacts(update, context)
+    elif text == "💰 Изменить текст на оплате":
+        await handle_change_text_payment(update, context)
     elif text == "⬅️ Назад":
         await handle_back_to_admin_menu(update, context)
 
 
-CHANGE_PRICE, CHANGE_PERIOD, CHANGE_CONTACTS, CHANGE_INFO = range(3, 7)
+CHANGE_PRICE, CHANGE_PERIOD, CHANGE_CONTACTS, CHANGE_INFO, CHANGE_TEXT_PAYMENT = range(3, 8)
 
 
 def get_topics_keyboard():
@@ -135,6 +137,11 @@ async def handle_change_period(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     return CHANGE_PERIOD
 
+async def handle_change_text_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pass
+
+async def save_new_text_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pass
 
 async def save_new_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -209,7 +216,7 @@ async def save_new_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_contacts = text
     conn = sqlite3.connect(db.DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE settings SET contacts = ?", (new_contacts,))
+    c.execute("UPDATE settings SET support_concat = ?", (new_contacts,))
     conn.commit()
     conn.close()
 

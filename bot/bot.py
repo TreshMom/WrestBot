@@ -13,6 +13,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     ChatJoinRequestHandler,
     ConversationHandler,
+    PreCheckoutQueryHandler
 )
 
 from admin import (
@@ -27,13 +28,15 @@ from admin import (
     handle_change_contacts,
     save_new_contacts,
     handle_back_to_admin_menu,
+    handle_change_text_payment,
+    save_new_text_payment,
     CHANGE_PRICE,
     CHANGE_PERIOD,
     CHANGE_INFO,
     CHANGE_CONTACTS,
     BACK_BUTTON,
+    CHANGE_TEXT_PAYMENT
 )
-
 
 def main():
     bot_token = db.get_setting("bot_token")
@@ -49,13 +52,16 @@ def main():
                 filters.Regex("^💳 Изменить цену на подписку$"), handle_change_price
             ),
             MessageHandler(
-                filters.Regex("^📞 Изменить период подписки$"), handle_change_period
+                filters.Regex("^📅 Изменить период подписки$"), handle_change_period
             ),
             MessageHandler(
                 filters.Regex("^ℹ️ Изменить информацию о тренере$"), handle_change_info
             ),
             MessageHandler(
-                filters.Regex("^🎥 Изменить контакты$"), handle_change_contacts
+                filters.Regex("^📞 Изменить контакт в контактах$"), handle_change_contacts
+            ),
+            MessageHandler(
+                filters.Regex("^💰 Изменить текст на оплате$"), handle_change_text_payment
             ),
         ],
         states={
@@ -83,22 +89,24 @@ def main():
                 ),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_contacts),
             ],
+            CHANGE_TEXT_PAYMENT: [
+                MessageHandler(
+                    filters.Regex(f"^{BACK_BUTTON}$"), handle_back_to_admin_menu
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_text_payment),
+            ],
         },
         fallbacks=[],
     )
+
     application.add_handler(admin_settings_conv)
 
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
-
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(PreCheckoutQueryHandler(user.handle_precheckout_query))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, user.handle_successful_payment))
+    
     # === Callback-кнопки ===
-    application.add_handler(
-        CallbackQueryHandler(user.handle_payment_check, pattern="^check_")
-    )
-    application.add_handler(
-        CallbackQueryHandler(user.init_payment_process, pattern="^init_payment$")
-    )
+    application.add_handler(CallbackQueryHandler(user.init_payment_process, pattern="^init_payment$"))
     application.add_handler(CallbackQueryHandler(user.handle_back, pattern="^go_back$"))
 
     # === Запросы на вступление в группу ===
@@ -106,7 +114,7 @@ def main():
 
     application.job_queue.run_daily(
         user.check_and_remove_expired_subscriptions,
-        time=time(hour=14, minute=11, tzinfo=pytz.timezone("Europe/Moscow")),
+        time=time(hour=14, minute=55, tzinfo=pytz.timezone("Europe/Moscow")),
     )
 
     # === Запуск бота ===
@@ -115,3 +123,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
