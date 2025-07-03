@@ -112,9 +112,17 @@ def main():
     # === Запросы на вступление в группу ===
     application.add_handler(ChatJoinRequestHandler(user.handle_join_request))
 
+    # === Планировщик задач ===
+    # Проверка и удаление просроченных подписок каждый день в 14:55
     application.job_queue.run_daily(
         user.check_and_remove_expired_subscriptions,
         time=time(hour=14, minute=55, tzinfo=pytz.timezone("Europe/Moscow")),
+    )
+    
+    # Отправка напоминаний о истечении подписки каждый день в 10:00
+    application.job_queue.run_daily(
+        user.send_subscription_reminders,
+        time=time(hour=16, minute=52, tzinfo=pytz.timezone("Europe/Moscow")),
     )
 
     # === Запуск бота ===

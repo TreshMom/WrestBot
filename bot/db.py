@@ -39,19 +39,19 @@ def init_settings_with_defaults():
     if c.fetchone()[0] == 0:
         c.execute(
             """
-            INSERT INTO settings (price, period, admin_usernames, description_coach, support_concat, bank_token, bot_token, link_chanal, chat_id, text_payment)
+            INSERT INTO settings (admin_usernames, bank_token, bot_token, link_chanal, chat_id, price, period, text_payment, description_coach, support_concat)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                2000,
-                3,
-                "424576017, 00000000",
-                "Максим Александрович, четырех кратный победитель кубка галактики, трехкратный призер дворовых игр без правил и просто капитальный красавчик",
-                "@am_vasilev",
+                "424576017, 956627095",
                 "None",
                 "None",
                 "None",
                 None,
-                "🥋 Курс вольной борьбы\n\n 🔥 Доступ к эксклюзивным видео, техникам и тренировкам\n",
+                1000,
+                1,
+                "Тут должен быть текст оплаты",
+                "Тут должна быть информация о тренере",
+                "@temmp_support",
             ),
         )
     conn.commit()
@@ -89,6 +89,16 @@ def is_user_paid(user_id: int) -> bool:
     row = c.fetchone()
     conn.close()
     return bool(row[0]) if row else False
+
+
+def get_user_subscription_end(user_id: int) -> str:
+    """Получает дату окончания подписки пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT data_end FROM users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 
 #init_db()

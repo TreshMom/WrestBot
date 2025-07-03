@@ -138,10 +138,30 @@ async def handle_change_period(update: Update, context: ContextTypes.DEFAULT_TYP
     return CHANGE_PERIOD
 
 async def handle_change_text_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    await update.message.reply_text(
+        "Введите новый текст для страницы оплаты:", reply_markup=get_back_keyboard()
+    )
+    return CHANGE_TEXT_PAYMENT
 
 async def save_new_text_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    text = update.message.text
+    if text == BACK_BUTTON:
+        await update.message.reply_text(
+            "Главное меню администратора", reply_markup=get_main_keyboard_admin()
+        )
+        return ConversationHandler.END
+
+    new_text_payment = text
+    conn = sqlite3.connect(db.DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE settings SET text_payment = ?", (new_text_payment,))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(
+        "Текст на странице оплаты обновлён.", reply_markup=get_main_keyboard_admin()
+    )
+    return ConversationHandler.END
 
 async def save_new_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
